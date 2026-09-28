@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  namespace: dev
+data:
+  ENVIRONMENT: "staging-minikube"
+  PORT: "8000"

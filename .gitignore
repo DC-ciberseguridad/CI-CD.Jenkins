@@ -1,0 +1,17 @@
+cat <<EOF >> .gitignore
+# Binarios e instaladores
+minikube*
+kubectl
+terraform
+*.exe
+
+# Entornos virtuales y caché
+venv/
+__pycache__/
+*.pyc
+
+# Archivos de estado de Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+EOF

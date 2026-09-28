@@ -1,0 +1,36 @@
+controller:
+  image:
+    registry: "docker.io"
+    repository: "jenkins/jenkins"
+    tag: "jdk21"
+    pullPolicy: "Always"
+  
+  # Recursos asignados al plano de control de Jenkins
+  resources:
+    requests:
+      cpu: "300m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1024Mi"
+
+  # Tipo de servicio para acceder a la UI de Jenkins desde Minikube
+  serviceType: NodePort
+  nodePort: 32000
+
+  # Instalación automática de plugins esenciales usando versiones actualizadas
+  installPlugins:
+    - "kubernetes:latest"
+    - "workflow-aggregator:latest"
+    - "git:latest"
+    - "configuration-as-code:latest"
+    - "credentials-binding:latest"
+
+# Configuración del Cloud Provider (Kubernetes Agent Executor)
+agent:
+  enabled: true
+  defaultsProviderTemplate: "default"
+  # Asigna permisos de ServiceAccount para que los agentes puedan crear recursos/Pods en K8s
+  serviceAccount:
+    create: true
+    name: jenkins-agent-sa
