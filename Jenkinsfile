@@ -34,17 +34,17 @@ spec:
 
     environment {
         AWS_REGION          = 'us-east-1'
-        AWS_ACCOUNT_ID      = '123456789012' // Reemplazar con tu ID real de AWS
+        AWS_ACCOUNT_ID      = '270876217576' // Reemplazar con tu ID real de AWS
         ECR_REPO_NAME       = 'devops-enterprise-api'
         IMAGE_NAME          = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}"
         BUILD_TAG           = "build-${BUILD_NUMBER}"
         AWS_CREDENTIALS_ID  = 'aws-ecr-credentials' // ID configurado en Jenkins Credentials Store
     }
 
-    options {
-        timeout(time: 30, unit: 'MINUTES')
+   options {
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        ansiColor('xterm')
+        disableConcurrentBuilds()
+        timeout(time: 1, unit: 'HOURS')
     }
 
     stages {

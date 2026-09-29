@@ -67,7 +67,17 @@ cd terraform/
 terraform init
 terraform apply -auto-approve
 
-Nota: Toma nota de los outputs jenkins_user_access_key_id y jenkins_user_secret_access_key (obtenlo ejecutando terraform output jenkins_user_secret_access_key).
+Nota: Toma nota de los outputs ya que seran necesarios más adelante.
+
+ • ecr_repository_registry_id "debe ir en Jenkinsfile: AWS_ACCOUNT_ID = 'Tu ID de cuenta real'" 
+ • jenkins_user_access_key_id
+ • jenkins_user_secret_access_key
+ 
+En caso de que muestre el "jenkins_user_secret_access_key" como <sensitive>
+
+Bash
+
+terraform output jenkins_user_secret_access_key
 
 ### Paso 3 — Desplegar Jenkins en Kubernetes con Helm
 
@@ -83,11 +93,13 @@ helm install jenkins jenkins/jenkins -f jenkins/values.yaml -n jenkins --create-
 1. Obtén la contraseña inicial del administrador de Jenkins:
 
 Bash
+
 kubectl get secret --namespace jenkins jenkins -o jsonpath="{.data.jenkins-admin-password}" | base64 --decode; echo
 
 2. Redirige el puerto del servicio a tu máquina local:
 
 Bash
+
 kubectl port-forward svc/jenkins -n jenkins 8080:8080
 
 3. Accede a http://localhost:8080 (Usuario: admin).
