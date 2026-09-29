@@ -9,6 +9,9 @@ metadata:
     component: jenkins-agent
 spec:
   containers:
+  - name: jnlp
+    image: jenkins/inbound-agent:4.11.2-1-alpine
+    imagePullPolicy: IfNotPresent
   - name: python
     image: python:3.11-slim
     command:
