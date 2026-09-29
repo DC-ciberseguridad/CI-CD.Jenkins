@@ -21,30 +21,26 @@ spec:
     image: docker:24.0-dind
     securityContext:
       privileged: true
+    env:
+    - name: DOCKER_TLS_CERTDIR
+      value: ""
     command:
     - cat
     tty: true
-    volumeMounts:
-    - mountPath: /var/run/docker.sock
-      name: docker-sock
-  volumes:
-  - name: docker-sock
-    hostPath:
-      path: /var/run/docker.sock
 '''
         }
     }
 
     environment {
         AWS_REGION          = 'us-east-1'
-        AWS_ACCOUNT_ID      = '270876217576' // Reemplazar con tu ID real de AWS
+        AWS_ACCOUNT_ID      = '270876217576'
         ECR_REPO_NAME       = 'devops-enterprise-api'
         IMAGE_NAME          = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}"
         BUILD_TAG           = "build-${BUILD_NUMBER}"
-        AWS_CREDENTIALS_ID  = 'aws-ecr-credentials' // ID configurado en Jenkins Credentials Store
+        AWS_CREDENTIALS_ID  = 'aws-ecr-credentials'
     }
 
-   options {
+    options {
         buildDiscarder(logRotator(numToKeepStr: '10'))
         disableConcurrentBuilds()
         timeout(time: 1, unit: 'HOURS')
@@ -53,39 +49,40 @@ spec:
     stages {
 
         stage('1. Code Analysis & Unit Tests') {
-    steps {
-        container('python') {
-            sh '''
-                echo "=== [CI] Ejecutando Pruebas Unitarias ==="
-                python -m venv venv
-                . venv/bin/activate
-                pip install --upgrade pip
-                
-                # Instalar dependencias desde app/requirements.txt
-                pip install -r app/requirements.txt
-                
-                # Configurar PYTHONPATH para que pytest encuentre el módulo app.main
-                export PYTHONPATH=$PYTHONPATH:$(pwd)/app
-                
-                # Ejecutar pytest en la carpeta app/tests/
-                pytest app/tests/ --verbose --junitxml=test-results.xml
-            '''
+            steps {
+                container('python') {
+                    sh '''
+                        echo "=== [CI] Ejecutando Pruebas Unitarias ==="
+                        python -m venv venv
+                        . venv/bin/activate
+                        pip install --upgrade pip
+                        
+                        pip install -r app/requirements.txt
+                        
+                        export PYTHONPATH=$PYTHONPATH:$(pwd)/app
+                        
+                        pytest app/tests/ --verbose --junitxml=test-results.xml
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'test-results.xml', allowEmptyArchive: true
+                }
+            }
         }
-    }
-    post {
-        always {
-            // Se usa archiveArtifacts para guardar el reporte XML de forma nativa sin requerir el plugin JUnit
-            archiveArtifacts artifacts: 'test-results.xml', allowEmptyArchive: true
-        }
-    }
-}
 
         stage('2. Build Docker Image') {
             steps {
                 container('docker-trivy') {
                     sh '''
+                        echo "=== [CI] Iniciando Daemon de Docker ==="
+                        dockerd-entrypoint.sh &
+                        sleep 5
+
                         echo "=== [CI] Construyendo Imagen Docker ==="
-                        docker build -t ${IMAGE_NAME}:${BUILD_TAG} -t ${IMAGE_NAME}:latest .
+                        # Apunta a app/Dockerfile y usa app/ como contexto
+                        docker build -t ${IMAGE_NAME}:${BUILD_TAG} -t ${IMAGE_NAME}:latest -f app/Dockerfile app/
                     '''
                 }
             }
@@ -96,11 +93,9 @@ spec:
                 container('docker-trivy') {
                     sh '''
                         echo "=== [DevSecOps] Escaneando Vulnerabilidades con Trivy ==="
-                        # Descargar e instalar binario oficial de Trivy
                         wget https://github.com/aquasecurity/trivy/releases/download/v0.48.3/trivy_0.48.3_Linux-64bit.tar.gz
                         tar zxvf trivy_0.48.3_Linux-64bit.tar.gz
                         
-                        # Escanear imagen (Audita severidades HIGH y CRITICAL sin abortar la ejecución en dev)
                         ./trivy image --severity HIGH,CRITICAL --exit-code 0 ${IMAGE_NAME}:${BUILD_TAG}
                     '''
                 }
@@ -117,7 +112,6 @@ spec:
                     container('docker-trivy') {
                         sh '''
                             echo "=== [CD] Autenticando con AWS ECR ==="
-                            # Instalar AWS CLI en el contenedor efímero
                             apk add --no-cache aws-cli
                             
                             aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
@@ -136,23 +130,18 @@ spec:
                 container('docker-trivy') {
                     sh '''
                         echo "=== [CD] Desplegando en Kubernetes (Minikube) ==="
-                        # Instalar kubectl
                         curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
                         chmod +x kubectl && mv kubectl /usr/local/bin/
 
-                        # Crear Namespace y ConfigMap
                         kubectl apply -f k8s/namespace.yaml
                         kubectl apply -f k8s/configmap.yaml
 
-                        # Reemplazar la etiqueta de imagen en el manifiesto dinámicamente
                         sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" k8s/deployment.yaml
                         sed -i "s|BUILD_TAG|${BUILD_TAG}|g" k8s/deployment.yaml
 
-                        # Aplicar Deployment y Service
                         kubectl apply -f k8s/deployment.yaml
                         kubectl apply -f k8s/service.yaml
 
-                        # Confirmar el estado del despliegue (Rolling Update)
                         kubectl rollout status deployment/devops-enterprise-api -n dev --timeout=120s
                     '''
                 }
