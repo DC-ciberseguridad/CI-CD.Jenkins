@@ -24,6 +24,8 @@ spec:
     env:
     - name: DOCKER_TLS_CERTDIR
       value: ""
+    - name: DOCKER_HOST
+      value: "tcp://localhost:2375"
     command:
     - cat
     tty: true
@@ -77,11 +79,10 @@ spec:
                 container('docker-trivy') {
                     sh '''
                         echo "=== [CI] Iniciando Daemon de Docker ==="
-                        dockerd-entrypoint.sh &
-                        sleep 5
+                        dockerd-entrypoint.sh --tls=false > /dev/null 2>&1 &
+                        sleep 3
 
                         echo "=== [CI] Construyendo Imagen Docker ==="
-                        # Apunta a app/Dockerfile y usa app/ como contexto
                         docker build -t ${IMAGE_NAME}:${BUILD_TAG} -t ${IMAGE_NAME}:latest -f app/Dockerfile app/
                     '''
                 }
