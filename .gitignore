@@ -1,5 +1,7 @@
 cat <<EOF >> .gitignore
 # Binarios e instaladores
+get-docker.sh
+get_helm.sh
 minikube*
 kubectl
 terraform
