@@ -31,6 +31,4 @@ agent:
   enabled: true
   defaultsProviderTemplate: "default"
   # Asigna permisos de ServiceAccount para que los agentes puedan crear recursos/Pods en K8s
-  serviceAccount:
-    create: true
-    name: jenkins-agent-sa
+  serviceAccount: jenkins-agent-sa
