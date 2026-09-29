@@ -53,26 +53,32 @@ spec:
     stages {
 
         stage('1. Code Analysis & Unit Tests') {
-            steps {
-                container('python') {
-                    sh '''
-                        echo "=== [CI] Ejecutando Pruebas Unitarias ==="
-                        python -m venv venv
-                        . venv/bin/activate
-                        pip install --upgrade pip
-                        pip install -r app/requirements.txt
-                        
-                        # Ejecutar suite de pruebas unitarias con Pytest
-                        pytest tests/ --verbose --junitxml=test-results.xml
-                    '''
-                }
-            }
-            post {
-                always {
-                    junit 'test-results.xml'
-                }
-            }
+    steps {
+        container('python') {
+            sh '''
+                echo "=== [CI] Ejecutando Pruebas Unitarias ==="
+                python -m venv venv
+                . venv/bin/activate
+                pip install --upgrade pip
+                
+                # Instalar dependencias desde app/requirements.txt
+                pip install -r app/requirements.txt
+                
+                # Configurar PYTHONPATH para que pytest encuentre el módulo app.main
+                export PYTHONPATH=$PYTHONPATH:$(pwd)/app
+                
+                # Ejecutar pytest en la carpeta app/tests/
+                pytest app/tests/ --verbose --junitxml=test-results.xml
+            '''
         }
+    }
+    post {
+        always {
+            // Se usa archiveArtifacts para guardar el reporte XML de forma nativa sin requerir el plugin JUnit
+            archiveArtifacts artifacts: 'test-results.xml', allowEmptyArchive: true
+        }
+    }
+}
 
         stage('2. Build Docker Image') {
             steps {
