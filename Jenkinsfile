@@ -114,24 +114,20 @@ spec:
         )]) {
             container('docker-trivy') {
                 sh '''
-                    echo "=== [CD] Configurando variables de AWS ==="
-                    export AWS_REGION="${AWS_REGION}"
-                    export AWS_DEFAULT_REGION="${AWS_REGION}"
+                    echo "=== [CD] Instalando jq y curl ==="
+                    apk add --no-cache jq curl
 
-                    echo "=== [CD] Descargando Helper de AWS ECR ==="
-                    wget -q https://amazon-ecr-credential-helper-releases.s3.us-east-1.amazonaws.com/0.8.0/linux-amd64/docker-credential-ecr-login -O /usr/local/bin/docker-credential-ecr-login
-                    chmod +x /usr/local/bin/docker-credential-ecr-login
+                    echo "=== [CD] Obteniendo Token de ECR directamente de AWS ==="
+                    ECR_PASSWORD=$(curl -s -X POST \
+                      https://ecr.${AWS_REGION}.amazonaws.com/ \
+                      -H "X-Amz-Target: AmazonEC2ContainerRegistry_V20150921.GetAuthorizationToken" \
+                      -H "Content-Type: application/x-amz-json-1.1" \
+                      --aws-sigv4 "aws:amz:${AWS_REGION}:ecr" \
+                      --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
+                      | jq -r '.authorizationData[0].authorizationToken' | base64 -d | cut -d: -f2)
 
-                    echo "=== [CD] Configurando credenciales de Docker ==="
-                    mkdir -p $HOME/.docker
-                    cat <<EOF > $HOME/.docker/config.json
-{
-  "credsStore": "ecr-login",
-  "credHelpers": {
-    "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com": "ecr-login"
-  }
-}
-EOF
+                    echo "=== [CD] Autenticando Docker con ECR ==="
+                    echo "${ECR_PASSWORD}" | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
                     echo "=== [CD] Publicando Imagen en AWS ECR ==="
                     docker push ${IMAGE_NAME}:${BUILD_TAG}
