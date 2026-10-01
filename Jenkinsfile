@@ -114,14 +114,24 @@ spec:
         )]) {
             container('docker-trivy') {
                 sh '''
-                    echo "=== [CD] Instalando Helper Oficial de Amazon ECR (Binario Go) ==="
-                    # Descargar e instalar el binario estático oficial
+                    echo "=== [CD] Configurando variables de AWS ==="
+                    export AWS_REGION="${AWS_REGION}"
+                    export AWS_DEFAULT_REGION="${AWS_REGION}"
+
+                    echo "=== [CD] Descargando Helper de AWS ECR ==="
                     wget -q https://amazon-ecr-credential-helper-releases.s3.us-east-1.amazonaws.com/0.8.0/linux-amd64/docker-credential-ecr-login -O /usr/local/bin/docker-credential-ecr-login
                     chmod +x /usr/local/bin/docker-credential-ecr-login
 
-                    echo "=== [CD] Configurando credenciales de Docker para ECR ==="
-                    mkdir -p ~/.docker
-                    echo '{"credsStore": "ecr-login"}' > ~/.docker/config.json
+                    echo "=== [CD] Configurando credenciales de Docker ==="
+                    mkdir -p $HOME/.docker
+                    cat <<EOF > $HOME/.docker/config.json
+{
+  "credsStore": "ecr-login",
+  "credHelpers": {
+    "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com": "ecr-login"
+  }
+}
+EOF
 
                     echo "=== [CD] Publicando Imagen en AWS ECR ==="
                     docker push ${IMAGE_NAME}:${BUILD_TAG}
