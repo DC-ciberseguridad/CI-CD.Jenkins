@@ -105,28 +105,31 @@ spec:
     }
 }
 
-        stage('4. AWS ECR Authentication & Push') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: env.AWS_CREDENTIALS_ID,
-                    usernameVariable: 'AWS_ACCESS_KEY_ID',
-                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-                )]) {
-                    container('docker-trivy') {
-                        sh '''
-                            echo "=== [CD] Autenticando con AWS ECR ==="
-                            apk add --no-cache aws-cli
-                            
-                            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-                            
-                            echo "=== [CD] Publicando Imagen en AWS ECR ==="
-                            docker push ${IMAGE_NAME}:${BUILD_TAG}
-                            docker push ${IMAGE_NAME}:latest
-                        '''
-                    }
-                }
+       stage('4. AWS ECR Authentication & Push') {
+    steps {
+        withCredentials([usernamePassword(
+            credentialsId: env.AWS_CREDENTIALS_ID,
+            usernameVariable: 'AWS_ACCESS_KEY_ID',
+            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+        )]) {
+            container('docker-trivy') {
+                sh '''
+                    echo "=== [CD] Instalando librerías requeridas ==="
+                    apk update && apk add --no-cache aws-cli
+
+                    echo "=== [CD] Autenticando con AWS ECR ==="
+                    export AWS_DEFAULT_REGION=${AWS_REGION}
+                    
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+                    echo "=== [CD] Publicando Imagen en AWS ECR ==="
+                    docker push ${IMAGE_NAME}:${BUILD_TAG}
+                    docker push ${IMAGE_NAME}:latest
+                '''
             }
         }
+    }
+}
 
         stage('5. Kubernetes Deployment (Minikube)') {
             steps {
