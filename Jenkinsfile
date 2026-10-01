@@ -105,7 +105,7 @@ spec:
     }
 }
 
-       stage('4. AWS ECR Authentication & Push') {
+     stage('4. AWS ECR Authentication & Push') {
     steps {
         withCredentials([usernamePassword(
             credentialsId: env.AWS_CREDENTIALS_ID,
@@ -114,8 +114,10 @@ spec:
         )]) {
             container('docker-trivy') {
                 sh '''
-                    echo "=== [CD] Instalando amazon-ecr-credential-helper (Sin Python/AWS-CLI) ==="
-                    apk add --no-cache amazon-ecr-credential-helper jq
+                    echo "=== [CD] Instalando Helper Oficial de Amazon ECR (Binario Go) ==="
+                    # Descargar e instalar el binario estático oficial
+                    wget -q https://amazon-ecr-credential-helper-releases.s3.us-east-1.amazonaws.com/0.8.0/linux-amd64/docker-credential-ecr-login -O /usr/local/bin/docker-credential-ecr-login
+                    chmod +x /usr/local/bin/docker-credential-ecr-login
 
                     echo "=== [CD] Configurando credenciales de Docker para ECR ==="
                     mkdir -p ~/.docker
