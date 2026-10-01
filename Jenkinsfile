@@ -90,18 +90,20 @@ spec:
         }
 
         stage('3. Security Scan (Trivy DevSecOps)') {
-            steps {
-                container('docker-trivy') {
-                    sh '''
-                        echo "=== [DevSecOps] Escaneando Vulnerabilidades con Trivy ==="
-                        wget https://github.com/aquasecurity/trivy/releases/download/v0.48.3/trivy_0.48.3_Linux-64bit.tar.gz
-                        tar zxvf trivy_0.48.3_Linux-64bit.tar.gz
-                        
-                        ./trivy image --severity HIGH,CRITICAL --exit-code 0 ${IMAGE_NAME}:${BUILD_TAG}
-                    '''
-                }
-            }
+    steps {
+        container('docker-trivy') {
+            sh '''
+                echo "=== [DevSecOps] Escaneando Vulnerabilidades con Trivy ==="
+                
+                # Instalar Trivy de forma dinámica usando el instalador oficial
+                wget -qO- https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+                
+                # Ejecutar el escaneo sobre la imagen construida
+                trivy image --severity HIGH,CRITICAL 270876217576.dkr.ecr.us-east-1.amazonaws.com/devops-enterprise-api:latest
+            '''
         }
+    }
+}
 
         stage('4. AWS ECR Authentication & Push') {
             steps {
