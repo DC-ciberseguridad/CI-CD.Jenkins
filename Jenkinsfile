@@ -114,13 +114,12 @@ spec:
         )]) {
             container('docker-trivy') {
                 sh '''
-                    echo "=== [CD] Instalando librerías requeridas ==="
-                    apk update && apk add --no-cache aws-cli
+                    echo "=== [CD] Instalando amazon-ecr-credential-helper (Sin Python/AWS-CLI) ==="
+                    apk add --no-cache amazon-ecr-credential-helper jq
 
-                    echo "=== [CD] Autenticando con AWS ECR ==="
-                    export AWS_DEFAULT_REGION=${AWS_REGION}
-                    
-                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    echo "=== [CD] Configurando credenciales de Docker para ECR ==="
+                    mkdir -p ~/.docker
+                    echo '{"credsStore": "ecr-login"}' > ~/.docker/config.json
 
                     echo "=== [CD] Publicando Imagen en AWS ECR ==="
                     docker push ${IMAGE_NAME}:${BUILD_TAG}
