@@ -142,30 +142,32 @@ spec:
             }
         }
 
-        stage('5. Kubernetes Deployment (Minikube)') {
-    steps {
-        container('docker-trivy') {
-            sh '''
-                echo "=== [CD] Desplegando en Kubernetes (Minikube) ==="
-                apk add --no-cache curl
+                stage('5. Kubernetes Deployment (Minikube)') {
+            steps {
+                container('docker-trivy') {
+                    sh '''
+                        echo "=== [CD] Desplegando en Kubernetes (Minikube) ==="
+                        apk add --no-cache curl
 
-                curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                chmod +x kubectl && mv kubectl /usr/local/bin/
+                        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                        chmod +x kubectl && mv kubectl /usr/local/bin/
 
-                kubectl apply -f k8s/namespace.yaml
-                kubectl apply -f k8s/configmap.yaml
+                        # Omitimos la aplicación del namespace si ya fue creado previamente:
+                        # kubectl apply -f k8s/namespace.yaml
 
-                sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" k8s/deployment.yaml
-                sed -i "s|BUILD_TAG|${BUILD_TAG}|g" k8s/deployment.yaml
+                        kubectl apply -f k8s/configmap.yaml -n dev
 
-                kubectl apply -f k8s/service.yaml
-                kubectl apply -f k8s/deployment.yaml
+                        sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" k8s/deployment.yaml
+                        sed -i "s|BUILD_TAG|${BUILD_TAG}|g" k8s/deployment.yaml
 
-                kubectl rollout status deployment/devops-enterprise-api -n dev --timeout=120s
-            '''
-         }
-       }
-      }
+                        kubectl apply -f k8s/deployment.yaml -n dev
+                        kubectl apply -f k8s/service.yaml -n dev
+
+                        kubectl rollout status deployment/devops-enterprise-api -n dev --timeout=120s
+                    '''
+                }
+            }
+        }
     }
 
     post {
