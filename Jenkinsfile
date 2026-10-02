@@ -142,15 +142,14 @@ spec:
             }
         }
 
-      stage('5. Kubernetes Deployment (Minikube)') {
+        stage('5. Kubernetes Deployment (Minikube)') {
     steps {
         container('docker-trivy') {
             sh '''
                 echo "=== [CD] Desplegando en Kubernetes (Minikube) ==="
-                
-                # Descargar kubectl usando wget en lugar de curl
-                KUBE_VERSION=$(wget -qO- https://dl.k8s.io/release/stable.txt)
-                wget -q https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/amd64/kubectl -O kubectl
+                apk add --no-cache curl
+
+                curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
                 chmod +x kubectl && mv kubectl /usr/local/bin/
 
                 kubectl apply -f k8s/namespace.yaml
@@ -164,9 +163,10 @@ spec:
 
                 kubectl rollout status deployment/devops-enterprise-api -n dev --timeout=120s
             '''
-        }
+         }
+       }
+      }
     }
-}
 
     post {
         success {
