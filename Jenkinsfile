@@ -17,6 +17,11 @@ spec:
     command:
     - cat
     tty: true
+  - name: aws-cli
+    image: amazon/aws-cli:latest
+    command:
+    - cat
+    tty: true
   - name: docker-trivy
     image: docker:24.0-dind
     securityContext:
@@ -58,11 +63,9 @@ spec:
                         python -m venv venv
                         . venv/bin/activate
                         pip install --upgrade pip
-                        
                         pip install -r app/requirements.txt
                         
                         export PYTHONPATH=$PYTHONPATH:$(pwd)/app
-                        
                         pytest app/tests/ --verbose --junitxml=test-results.xml
                     '''
                 }
@@ -90,64 +93,47 @@ spec:
         }
 
         stage('3. Security Scan (Trivy DevSecOps)') {
-    steps {
-        container('docker-trivy') {
-            sh '''
-                echo "=== [DevSecOps] Escaneando Vulnerabilidades con Trivy ==="
-                
-                # Instalar Trivy de forma dinámica usando el instalador oficial
-                wget -qO- https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-                
-                # Ejecutar el escaneo sobre la imagen construida
-                trivy image --severity HIGH,CRITICAL 270876217576.dkr.ecr.us-east-1.amazonaws.com/devops-enterprise-api:latest
-            '''
-        }
-    }
-}
-
-    stage('4. AWS ECR Authentication & Push') {
-    steps {
-        withCredentials([usernamePassword(
-            credentialsId: env.AWS_CREDENTIALS_ID,
-            usernameVariable: 'AWS_ACCESS_KEY_ID',
-            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-        )]) {
-            container('docker-trivy') {
-                sh '''
-                    echo "=== [CD] Instalando utilidades ==="
-                    apk add --no-cache openssl curl jq
-
-                    echo "=== [CD] Solicitando Token de ECR a AWS ==="
-                    RESPONSE=$(curl -s -X POST \
-                      https://ecr.${AWS_REGION}.amazonaws.com/ \
-                      -H "X-Amz-Target: AmazonEC2ContainerRegistry_V20150921.GetAuthorizationToken" \
-                      -H "Content-Type: application/x-amz-json-1.1" \
-                      --aws-sigv4 "aws:amz:${AWS_REGION}:ecr" \
-                      --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
-                      -d '{}')
-
-                    TOKEN_RAW=$(echo "$RESPONSE" | jq -r '.authorizationData[0].authorizationToken // empty')
-
-                    if [ -z "$TOKEN_RAW" ]; then
-                        echo "❌ ERROR: No se pudo obtener el token de AWS ECR. Respuesta de AWS:"
-                        echo "$RESPONSE"
-                        exit 1
-                    fi
-
-                    echo "=== [CD] Decodificando credenciales de ECR ==="
-                    ECR_PASS=$(echo "$TOKEN_RAW" | openssl base64 -d | sed 's/^AWS://')
-
-                    echo "=== [CD] Autenticando Docker con ECR ==="
-                    echo "$ECR_PASS" | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-
-                    echo "=== [CD] Publicando Imagen en AWS ECR ==="
-                    docker push ${IMAGE_NAME}:${BUILD_TAG}
-                    docker push ${IMAGE_NAME}:latest
-                '''
+            steps {
+                container('docker-trivy') {
+                    sh '''
+                        echo "=== [DevSecOps] Escaneando Vulnerabilidades con Trivy ==="
+                        wget -qO- https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+                        trivy image --severity HIGH,CRITICAL ${IMAGE_NAME}:latest
+                    '''
+                }
             }
         }
-    }
-}
+
+        stage('4. AWS ECR Authentication & Push') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: env.AWS_CREDENTIALS_ID,
+                    usernameVariable: 'AWS_ACCESS_KEY_ID',
+                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                )]) {
+                    // Paso A: Generar la contraseña de inicio de sesión de ECR utilizando la AWS CLI oficial
+                    container('aws-cli') {
+                        sh '''
+                            echo "=== [CD] Obteniendo Token de ECR con AWS CLI ==="
+                            aws ecr get-login-password --region ${AWS_REGION} > /tmp/ecr_pass.txt
+                        '''
+                    }
+
+                    // Paso B: Autenticar Docker y publicar la imagen usando la contraseña generada
+                    container('docker-trivy') {
+                        sh '''
+                            echo "=== [CD] Autenticando Docker con ECR ==="
+                            cat /tmp/ecr_pass.txt | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                            rm -f /tmp/ecr_pass.txt
+
+                            echo "=== [CD] Publicando Imagen en AWS ECR ==="
+                            docker push ${IMAGE_NAME}:${BUILD_TAG}
+                            docker push ${IMAGE_NAME}:latest
+                        '''
+                    }
+                }
+            }
+        }
 
         stage('5. Kubernetes Deployment (Minikube)') {
             steps {
