@@ -8,6 +8,9 @@ metadata:
   labels:
     component: jenkins-agent
 spec:
+  volumes:
+  - name: shared-tmp
+    emptyDir: {}
   containers:
   - name: jnlp
     image: jenkins/inbound-agent:4.11.2-1-alpine
@@ -22,6 +25,9 @@ spec:
     command:
     - cat
     tty: true
+    volumeMounts:
+    - name: shared-tmp
+      mountPath: /shared-tmp
   - name: docker-trivy
     image: docker:24.0-dind
     securityContext:
@@ -34,6 +40,9 @@ spec:
     command:
     - cat
     tty: true
+    volumeMounts:
+    - name: shared-tmp
+      mountPath: /shared-tmp
 '''
         }
     }
@@ -111,20 +120,18 @@ spec:
                     usernameVariable: 'AWS_ACCESS_KEY_ID',
                     passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                 )]) {
-                    // Paso A: Generar la contraseña de inicio de sesión de ECR utilizando la AWS CLI oficial
                     container('aws-cli') {
                         sh '''
                             echo "=== [CD] Obteniendo Token de ECR con AWS CLI ==="
-                            aws ecr get-login-password --region ${AWS_REGION} > /tmp/ecr_pass.txt
+                            aws ecr get-login-password --region ${AWS_REGION} > /shared-tmp/ecr_pass.txt
                         '''
                     }
 
-                    // Paso B: Autenticar Docker y publicar la imagen usando la contraseña generada
                     container('docker-trivy') {
                         sh '''
                             echo "=== [CD] Autenticando Docker con ECR ==="
-                            cat /tmp/ecr_pass.txt | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-                            rm -f /tmp/ecr_pass.txt
+                            cat /shared-tmp/ecr_pass.txt | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                            rm -f /shared-tmp/ecr_pass.txt
 
                             echo "=== [CD] Publicando Imagen en AWS ECR ==="
                             docker push ${IMAGE_NAME}:${BUILD_TAG}
@@ -149,8 +156,8 @@ spec:
                         sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" k8s/deployment.yaml
                         sed -i "s|BUILD_TAG|${BUILD_TAG}|g" k8s/deployment.yaml
 
-                        kubectl apply -f k8s/deployment.yaml
                         kubectl apply -f k8s/service.yaml
+                        kubectl apply -f k8s/deployment.yaml
 
                         kubectl rollout status deployment/devops-enterprise-api -n dev --timeout=120s
                     '''
