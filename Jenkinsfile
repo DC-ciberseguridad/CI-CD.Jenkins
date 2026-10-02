@@ -114,24 +114,30 @@ spec:
         )]) {
             container('docker-trivy') {
                 sh '''
-                    echo "=== [CD] Instalando herramientas ligeras ==="
+                    echo "=== [CD] Instalando utilidades ==="
                     apk add --no-cache openssl curl jq
 
-                    echo "=== [CD] Generando Token de ECR con AWS STS/ECR REST API ==="
-                    # Se solicita el token firmado directamente mediante AWS SigV4 desde la REST API
-                    TOKEN_RAW=$(curl -s -X POST \
+                    echo "=== [CD] Solicitando Token de ECR a AWS ==="
+                    RESPONSE=$(curl -s -X POST \
                       https://ecr.${AWS_REGION}.amazonaws.com/ \
                       -H "X-Amz-Target: AmazonEC2ContainerRegistry_V20150921.GetAuthorizationToken" \
                       -H "Content-Type: application/x-amz-json-1.1" \
                       --aws-sigv4 "aws:amz:${AWS_REGION}:ecr" \
                       --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
-                      | jq -r '.authorizationData[0].authorizationToken')
+                      -d '{}')
 
-                    # El token devuelto por ECR viene cifrado en base64 bajo la estructura 'AWS:PASSWORD'
-                    # Decodificamos de forma segura con openssl (100% compatible con Alpine)
+                    TOKEN_RAW=$(echo "$RESPONSE" | jq -r '.authorizationData[0].authorizationToken // empty')
+
+                    if [ -z "$TOKEN_RAW" ]; then
+                        echo "❌ ERROR: No se pudo obtener el token de AWS ECR. Respuesta de AWS:"
+                        echo "$RESPONSE"
+                        exit 1
+                    fi
+
+                    echo "=== [CD] Decodificando credenciales de ECR ==="
                     ECR_PASS=$(echo "$TOKEN_RAW" | openssl base64 -d | sed 's/^AWS://')
 
-                    echo "=== [CD] Autenticando Docker ==="
+                    echo "=== [CD] Autenticando Docker con ECR ==="
                     echo "$ECR_PASS" | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
                     echo "=== [CD] Publicando Imagen en AWS ECR ==="
