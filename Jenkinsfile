@@ -114,20 +114,19 @@ spec:
         )]) {
             container('docker-trivy') {
                 sh '''
-                    echo "=== [CD] Instalando jq y curl ==="
-                    apk add --no-cache jq curl
+                    echo "=== [CD] Instalando AWS CLI v2 Oficial en Alpine ==="
+                    apk add --no-cache gcompat groff curl
+                    
+                    if ! command -v aws &> /dev/null; then
+                        curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+                        unzip -q awscliv2.zip
+                        ./aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli
+                        rm -rf aws awscliv2.zip
+                    fi
 
-                    echo "=== [CD] Obteniendo Token de ECR directamente de AWS ==="
-                    ECR_PASSWORD=$(curl -s -X POST \
-                      https://ecr.${AWS_REGION}.amazonaws.com/ \
-                      -H "X-Amz-Target: AmazonEC2ContainerRegistry_V20150921.GetAuthorizationToken" \
-                      -H "Content-Type: application/x-amz-json-1.1" \
-                      --aws-sigv4 "aws:amz:${AWS_REGION}:ecr" \
-                      --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
-                      | jq -r '.authorizationData[0].authorizationToken' | base64 -d | cut -d: -f2)
-
-                    echo "=== [CD] Autenticando Docker con ECR ==="
-                    echo "${ECR_PASSWORD}" | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    echo "=== [CD] Autenticando Docker con AWS ECR ==="
+                    export AWS_DEFAULT_REGION=${AWS_REGION}
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
                     echo "=== [CD] Publicando Imagen en AWS ECR ==="
                     docker push ${IMAGE_NAME}:${BUILD_TAG}
