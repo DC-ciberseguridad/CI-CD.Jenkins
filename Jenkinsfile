@@ -142,29 +142,31 @@ spec:
             }
         }
 
-        stage('5. Kubernetes Deployment (Minikube)') {
-            steps {
-                container('docker-trivy') {
-                    sh '''
-                        echo "=== [CD] Desplegando en Kubernetes (Minikube) ==="
-                        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                        chmod +x kubectl && mv kubectl /usr/local/bin/
+      stage('5. Kubernetes Deployment (Minikube)') {
+    steps {
+        container('docker-trivy') {
+            sh '''
+                echo "=== [CD] Desplegando en Kubernetes (Minikube) ==="
+                
+                # Descargar kubectl usando wget en lugar de curl
+                KUBE_VERSION=$(wget -qO- https://dl.k8s.io/release/stable.txt)
+                wget -q https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/amd64/kubectl -O kubectl
+                chmod +x kubectl && mv kubectl /usr/local/bin/
 
-                        kubectl apply -f k8s/namespace.yaml
-                        kubectl apply -f k8s/configmap.yaml
+                kubectl apply -f k8s/namespace.yaml
+                kubectl apply -f k8s/configmap.yaml
 
-                        sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" k8s/deployment.yaml
-                        sed -i "s|BUILD_TAG|${BUILD_TAG}|g" k8s/deployment.yaml
+                sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" k8s/deployment.yaml
+                sed -i "s|BUILD_TAG|${BUILD_TAG}|g" k8s/deployment.yaml
 
-                        kubectl apply -f k8s/service.yaml
-                        kubectl apply -f k8s/deployment.yaml
+                kubectl apply -f k8s/service.yaml
+                kubectl apply -f k8s/deployment.yaml
 
-                        kubectl rollout status deployment/devops-enterprise-api -n dev --timeout=120s
-                    '''
-                }
-            }
+                kubectl rollout status deployment/devops-enterprise-api -n dev --timeout=120s
+            '''
         }
     }
+}
 
     post {
         success {
