@@ -101,13 +101,22 @@ spec:
             }
         }
 
-        stage('3. Security Scan (Trivy DevSecOps)') {
+                stage('3. Security Scan (Trivy DevSecOps)') {
             steps {
                 container('docker-trivy') {
                     sh '''
                         echo "=== [DevSecOps] Escaneando Vulnerabilidades con Trivy ==="
-                        wget -qO- https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-                        trivy image --severity HIGH,CRITICAL ${IMAGE_NAME}:latest
+                        
+                        # Instalar Trivy si no está presente
+                        if ! command -v trivy &> /dev/null; then
+                            wget -qO- https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+                        fi
+
+                        # Descargar la base de datos con reintentos e indicar un mirror alternativo si gcr.io falla
+                        trivy image \
+                        --db-repository ghcr.io/aquasecurity/trivy-db \
+                        --severity HIGH,CRITICAL \
+                        ${IMAGE_NAME}:latest
                     '''
                 }
             }
