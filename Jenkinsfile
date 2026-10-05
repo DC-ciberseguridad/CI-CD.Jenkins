@@ -151,25 +151,39 @@ spec:
             }
         }
 
-                    stage('5. Kubernetes Deployment (Minikube)') {
+                            stage('5. Kubernetes Deployment (Minikube)') {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: env.AWS_CREDENTIALS_ID,
                     usernameVariable: 'AWS_ACCESS_KEY_ID',
                     passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                 )]) {
+                    // 1. Obtener el token con el contenedor oficial aws-cli
+                    container('aws-cli') {
+                        sh '''
+                            echo "=== [CD] Obteniendo Token de ECR para K8s ==="
+                            aws ecr get-login-password --region ${AWS_REGION} > /shared-tmp/ecr_k8s_token.txt
+                        '''
+                    }
+
+                    // 2. Aplicar manifiestos y crear el secret en el contenedor docker-trivy
                     container('docker-trivy') {
                         sh '''
                             echo "=== [CD] Desplegando en Kubernetes (Minikube) ==="
-                            apk add --no-cache curl aws-cli
+                            
+                            # Instalar curl solo si no está presente
+                            if ! command -v curl &> /dev/null; then
+                                apk add --no-cache curl
+                            fi
 
-                            # Descargar e instalar kubectl
+                            # Descargar kubectl
                             curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
                             chmod +x kubectl && mv kubectl /usr/local/bin/
 
-                            # Crear o actualizar el secret de ECR en el namespace 'dev'
-                            ECR_TOKEN=$(aws ecr get-login-password --region ${AWS_REGION})
-                            
+                            # Leer token y crear/actualizar el secret regcred en el namespace dev
+                            ECR_TOKEN=$(cat /shared-tmp/ecr_k8s_token.txt)
+                            rm -f /shared-tmp/ecr_k8s_token.txt
+
                             kubectl create secret docker-registry regcred \
                             --docker-server=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com \
                             --docker-username=AWS \
@@ -179,7 +193,7 @@ spec:
                             # Aplicar ConfigMap
                             kubectl apply -f k8s/configmap.yaml -n dev
 
-                            # Reemplazar placeholders en el manifiesto
+                            # Reemplazar variables en deployment.yaml
                             sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" k8s/deployment.yaml
                             sed -i "s|BUILD_TAG|${BUILD_TAG}|g" k8s/deployment.yaml
 
@@ -187,7 +201,7 @@ spec:
                             kubectl apply -f k8s/deployment.yaml -n dev
                             kubectl apply -f k8s/service.yaml -n dev
 
-                            # Monitorear el despliegue con un timeout extendido (300s)
+                            # Esperar despliegue exitoso
                             kubectl rollout status deployment/devops-enterprise-api -n dev --timeout=300s
                         '''
                     }
