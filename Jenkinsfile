@@ -151,28 +151,44 @@ spec:
             }
         }
 
-                stage('5. Kubernetes Deployment (Minikube)') {
-            steps {
+                    stage('5. Kubernetes Deployment (Minikube)') {
+        steps {
+            withCredentials([usernamePassword(
+                credentialsId: env.AWS_CREDENTIALS_ID,
+                usernameVariable: 'AWS_ACCESS_KEY_ID',
+                passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+            )]) {
                 container('docker-trivy') {
                     sh '''
                         echo "=== [CD] Desplegando en Kubernetes (Minikube) ==="
-                        apk add --no-cache curl
+                        apk add --no-cache curl aws-cli
 
+                        # Descargar e instalar kubectl
                         curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
                         chmod +x kubectl && mv kubectl /usr/local/bin/
 
-                        # Omitimos la aplicación del namespace si ya fue creado previamente:
-                        # kubectl apply -f k8s/namespace.yaml
+                        # Crear o actualizar el secret de ECR en el namespace 'dev'
+                        ECR_TOKEN=$(aws ecr get-login-password --region ${AWS_REGION})
+                        
+                        kubectl create secret docker-registry regcred \
+                        --docker-server=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com \
+                        --docker-username=AWS \
+                        --docker-password="${ECR_TOKEN}" \
+                        -n dev --dry-run=client -o yaml | kubectl apply -f -
 
+                        # Aplicar ConfigMap
                         kubectl apply -f k8s/configmap.yaml -n dev
 
+                        # Reemplazar placeholders en el manifiesto
                         sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" k8s/deployment.yaml
                         sed -i "s|BUILD_TAG|${BUILD_TAG}|g" k8s/deployment.yaml
 
+                        # Aplicar Deployment y Service
                         kubectl apply -f k8s/deployment.yaml -n dev
                         kubectl apply -f k8s/service.yaml -n dev
 
-                        kubectl rollout status deployment/devops-enterprise-api -n dev --timeout=120s
+                        # Monitorear el despliegue con un timeout extendido (300s)
+                        kubectl rollout status deployment/devops-enterprise-api -n dev --timeout=300s
                     '''
                 }
             }

@@ -20,12 +20,12 @@ spec:
       labels:
         app: devops-enterprise-api
     spec:
-      # Credenciales de acceso para descargar la imagen privada desde AWS ECR
+      # Debe coincidir exactamente con el nombre del secreto que crea el Jenkinsfile (regcred)
       imagePullSecrets:
-        - name: aws-ecr-secret
+        - name: regcred
       containers:
         - name: api
-          # La etiqueta IMAGE_TAG será sustituida dinámicamente por el Jenkinsfile
+          # Reemplazado dinámicamente por sed en el Jenkinsfile
           image: <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/devops-enterprise-api:BUILD_TAG
           imagePullPolicy: Always
           ports:
@@ -40,7 +40,6 @@ spec:
             limits:
               cpu: "250m"
               memory: "256Mi"
-          # Comprobaciones sanitarias de Kubernetes
           livenessProbe:
             httpGet:
               path: /health
