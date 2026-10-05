@@ -101,26 +101,26 @@ spec:
             }
         }
 
-                stage('3. Security Scan (Trivy DevSecOps)') {
-            steps {
-                container('docker-trivy') {
-                    sh '''
-                        echo "=== [DevSecOps] Escaneando Vulnerabilidades con Trivy ==="
-                        
-                        # Instalar Trivy si no está presente
-                        if ! command -v trivy &> /dev/null; then
-                            wget -qO- https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-                        fi
+            stage('3. Security Scan (Trivy DevSecOps)') {
+        steps {
+            container('docker-trivy') {
+                sh '''
+                    echo "=== [DevSecOps] Escaneando Vulnerabilidades con Trivy ==="
+                    
+                    # Instalar Trivy si no está presente
+                    if ! command -v trivy &> /dev/null; then
+                        wget -qO- https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+                    fi
 
-                        # Descargar la base de datos con reintentos e indicar un mirror alternativo si gcr.io falla
-                        trivy image \
-                        --db-repository ghcr.io/aquasecurity/trivy-db \
-                        --severity HIGH,CRITICAL \
-                        ${IMAGE_NAME}:latest
-                    '''
-                }
+                    # Descargar la base de datos con reintentos e indicar un mirror alternativo si gcr.io falla
+                    trivy image \
+                    --db-repository ghcr.io/aquasecurity/trivy-db \
+                    --severity HIGH,CRITICAL \
+                    ${IMAGE_NAME}:latest
+                '''
             }
         }
+    }
 
         stage('4. AWS ECR Authentication & Push') {
             steps {
@@ -152,44 +152,45 @@ spec:
         }
 
                     stage('5. Kubernetes Deployment (Minikube)') {
-        steps {
-            withCredentials([usernamePassword(
-                credentialsId: env.AWS_CREDENTIALS_ID,
-                usernameVariable: 'AWS_ACCESS_KEY_ID',
-                passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-            )]) {
-                container('docker-trivy') {
-                    sh '''
-                        echo "=== [CD] Desplegando en Kubernetes (Minikube) ==="
-                        apk add --no-cache curl aws-cli
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: env.AWS_CREDENTIALS_ID,
+                    usernameVariable: 'AWS_ACCESS_KEY_ID',
+                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                )]) {
+                    container('docker-trivy') {
+                        sh '''
+                            echo "=== [CD] Desplegando en Kubernetes (Minikube) ==="
+                            apk add --no-cache curl aws-cli
 
-                        # Descargar e instalar kubectl
-                        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                        chmod +x kubectl && mv kubectl /usr/local/bin/
+                            # Descargar e instalar kubectl
+                            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                            chmod +x kubectl && mv kubectl /usr/local/bin/
 
-                        # Crear o actualizar el secret de ECR en el namespace 'dev'
-                        ECR_TOKEN=$(aws ecr get-login-password --region ${AWS_REGION})
-                        
-                        kubectl create secret docker-registry regcred \
-                        --docker-server=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com \
-                        --docker-username=AWS \
-                        --docker-password="${ECR_TOKEN}" \
-                        -n dev --dry-run=client -o yaml | kubectl apply -f -
+                            # Crear o actualizar el secret de ECR en el namespace 'dev'
+                            ECR_TOKEN=$(aws ecr get-login-password --region ${AWS_REGION})
+                            
+                            kubectl create secret docker-registry regcred \
+                            --docker-server=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com \
+                            --docker-username=AWS \
+                            --docker-password="${ECR_TOKEN}" \
+                            -n dev --dry-run=client -o yaml | kubectl apply -f -
 
-                        # Aplicar ConfigMap
-                        kubectl apply -f k8s/configmap.yaml -n dev
+                            # Aplicar ConfigMap
+                            kubectl apply -f k8s/configmap.yaml -n dev
 
-                        # Reemplazar placeholders en el manifiesto
-                        sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" k8s/deployment.yaml
-                        sed -i "s|BUILD_TAG|${BUILD_TAG}|g" k8s/deployment.yaml
+                            # Reemplazar placeholders en el manifiesto
+                            sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" k8s/deployment.yaml
+                            sed -i "s|BUILD_TAG|${BUILD_TAG}|g" k8s/deployment.yaml
 
-                        # Aplicar Deployment y Service
-                        kubectl apply -f k8s/deployment.yaml -n dev
-                        kubectl apply -f k8s/service.yaml -n dev
+                            # Aplicar Deployment y Service
+                            kubectl apply -f k8s/deployment.yaml -n dev
+                            kubectl apply -f k8s/service.yaml -n dev
 
-                        # Monitorear el despliegue con un timeout extendido (300s)
-                        kubectl rollout status deployment/devops-enterprise-api -n dev --timeout=300s
-                    '''
+                            # Monitorear el despliegue con un timeout extendido (300s)
+                            kubectl rollout status deployment/devops-enterprise-api -n dev --timeout=300s
+                        '''
+                    }
                 }
             }
         }
